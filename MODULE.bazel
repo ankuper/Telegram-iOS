@@ -52,6 +52,22 @@ http_file(
     sha256 = "c5cd6a605ff20350c7faa19d8eeb599df6117ea4aabd16ac58a7eb5ba82df4e7",
 )
 
+# libteleproto3 — Type3 proxy transport, consumed as a prebuilt static lib from
+# the ankuper/teleproto3 GitHub release (single source of truth; never built
+# from source in client repos). Two slices: device (arm64) + simulator
+# (fat arm64+x86_64). See third-party/libteleproto3/BUILD.
+http_file(
+    name = "libteleproto3_ios_device",
+    urls = ["https://github.com/ankuper/teleproto3/releases/download/v0.7.0/libteleproto3-ios-arm64.tar.gz"],
+    sha256 = "ae3f0dbb5615229bbfada079afe937ab7bb23b29b4b8ccffa37e66c89a504616",
+)
+
+http_file(
+    name = "libteleproto3_ios_simulator",
+    urls = ["https://github.com/ankuper/teleproto3/releases/download/v0.7.0/libteleproto3-ios-simulator.tar.gz"],
+    sha256 = "a4881bc714ed01264ea934b6898de0c0b7b7292ef186f4b5f14842b960ccd0e7",
+)
+
 provisioning_profile_repository = use_extension("@build_bazel_rules_apple//apple:apple.bzl", "provisioning_profile_repository_extension")
 #provisioning_profile_repository.setup(
 #    fallback_profiles = "//path/to/some:filegroup", # Profiles to use if one isn't found locally
