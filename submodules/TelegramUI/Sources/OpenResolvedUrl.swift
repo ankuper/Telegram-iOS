@@ -559,7 +559,7 @@ func openResolvedUrlImpl(
         case let .proxy(host, port, username, password, secret):
             let server: ProxyServerSettings
             if let secret = secret {
-                server = ProxyServerSettings(host: host, port: abs(port), connection: .mtp(secret: secret))
+                server = ProxyServerSettings(host: host, port: abs(port), connection: .mtproto(secret: secret))
             } else {
                 server = ProxyServerSettings(host: host, port: abs(port), connection: .socks5(username: username, password: password))
             }

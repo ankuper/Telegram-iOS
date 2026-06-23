@@ -46,6 +46,15 @@ public extension ProxyServerConnection {
         }
         return false
     }
+
+    // Build the right MTProto-proxy connection from a raw secret, auto-detecting
+    // a Type3 (mtProxy3) secret by its 0xff prefix.
+    static func mtproto(secret: Data) -> ProxyServerConnection {
+        if secret.first == 0xff {
+            return .mtp3(secret: secret)
+        }
+        return .mtp(secret: secret)
+    }
 }
 
 public struct ProxyServerSettings: Codable, Equatable, Hashable {

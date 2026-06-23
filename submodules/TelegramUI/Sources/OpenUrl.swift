@@ -28,7 +28,7 @@ public func parseProxyUrl(sharedContext: SharedAccountContext, url: URL) -> Prox
         return nil
     }
     if let secret = proxy.secret, let _ = MTProxySecret.parseData(secret) {
-        return ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtp(secret: secret))
+        return ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtproto(secret: secret))
     } else {
         return ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .socks5(username: proxy.username, password: proxy.password))
     }

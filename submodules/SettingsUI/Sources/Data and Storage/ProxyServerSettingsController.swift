@@ -294,7 +294,7 @@ func proxyServerSettingsController(sharedContext: SharedAccountContext, context:
     } else {
         if let proxy = parseProxyUrl(sharedContext: sharedContext, url: UIPasteboard.general.string ?? "") {
             if let secret = proxy.secret, let parsedSecret = MTProxySecret.parseData(secret) {
-                pasteboardSettings = ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtp(secret: parsedSecret.serialize()))
+                pasteboardSettings = ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtproto(secret: parsedSecret.serialize()))
             } else {
                 pasteboardSettings = ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .socks5(username: proxy.username, password: proxy.password))
             }
