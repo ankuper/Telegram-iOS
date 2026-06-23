@@ -31,6 +31,14 @@
 
 @end
 
+@interface MTProxySecretType3 : MTProxySecret
+
+@property (nonatomic, strong, readonly) NSString * _Nonnull domain;
+
+- (instancetype _Nullable)initWithSecret:(NSData * _Nonnull)secret domain:(NSString * _Nonnull)domain;
+
+@end
+
 @interface MTSocksProxySettings : NSObject
 
 @property (nonatomic, strong, readonly) NSString * _Nonnull ip;

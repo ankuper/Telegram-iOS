@@ -287,6 +287,8 @@ private func proxySettingsControllerEntries(theme: PresentationTheme, strings: P
                     text = strings.ChatSettings_ConnectionType_UseSocks5
                 case .mtp:
                     text = strings.SocksProxySetup_ProxyTelegram
+                case .mtp3:
+                    text = "mtProxy3"
             }
             switch status {
                 case .notAvailable:
@@ -543,6 +545,10 @@ public func proxySettingsController(accountManager: AccountManager<TelegramAccou
                     var string: String
                     switch server.connection {
                     case let .mtp(secret):
+                        let secret = MTProxySecret.parseData(secret)?.serializeToString() ?? ""
+                        string = "https://t.me/proxy?server=\(server.host)&port=\(server.port)"
+                        string += "&secret=\((secret as NSString).addingPercentEncoding(withAllowedCharacters: CharacterSet.urlQueryValueAllowed) ?? "")"
+                    case let .mtp3(secret):
                         let secret = MTProxySecret.parseData(secret)?.serializeToString() ?? ""
                         string = "https://t.me/proxy?server=\(server.host)&port=\(server.port)"
                         string += "&secret=\((secret as NSString).addingPercentEncoding(withAllowedCharacters: CharacterSet.urlQueryValueAllowed) ?? "")"

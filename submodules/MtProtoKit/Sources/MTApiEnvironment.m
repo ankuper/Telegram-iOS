@@ -123,6 +123,12 @@ static NSData *base64_decode(NSString *str) {
             return nil;
         }
         return [[MTProxySecretType2 alloc] initWithSecret:[data subdataWithRange:NSMakeRange(1, 16)] domain:domain];
+    } else if (data.length >= 18 && firstByte == 0xff) {
+        NSString *domain = [[NSString alloc] initWithData:[data subdataWithRange:NSMakeRange(1 + 16, data.length - (1 + 16))] encoding:NSUTF8StringEncoding];
+        if (domain == nil) {
+            return nil;
+        }
+        return [[MTProxySecretType3 alloc] initWithSecret:[data subdataWithRange:NSMakeRange(1, 16)] domain:domain];
     } else {
         return nil;
     }
@@ -276,6 +282,63 @@ static NSData *base64_decode(NSString *str) {
         return false;
     }
     MTProxySecretType2 *other = object;
+    if (![self.secret isEqual:other.secret]) {
+        return false;
+    }
+    if (![self.domain isEqual:other.domain]) {
+        return false;
+    }
+    return true;
+}
+
+@end
+
+@implementation MTProxySecretType3
+
+- (instancetype _Nullable)initWithSecret:(NSData * _Nonnull)secret domain:(NSString * _Nonnull)domain {
+    self = [super initWithSecret:secret];
+    if (self != nil) {
+        _domain = domain;
+    }
+    return self;
+}
+
+- (instancetype)initWithCoder:(NSCoder *)aDecoder {
+    self = [super initWithCoder:aDecoder];
+    if (self != nil) {
+        _domain = [aDecoder decodeObjectForKey:@"domain"];
+    }
+    return self;
+}
+
+- (void)encodeWithCoder:(NSCoder *)aCoder {
+    [super encodeWithCoder:aCoder];
+    [aCoder encodeObject:_domain forKey:@"domain"];
+}
+
+- (NSData * _Nonnull)serialize {
+    NSMutableData *data = [[NSMutableData alloc] init];
+    uint8_t marker = 0xff;
+    [data appendBytes:&marker length:1];
+    [data appendData:self.secret];
+    [data appendData:[_domain dataUsingEncoding:NSUTF8StringEncoding]];
+    return data;
+}
+
+- (NSString * _Nonnull)serializeToString {
+    NSData *data = [self serialize];
+    NSString *result = [data base64EncodedStringWithOptions:kNilOptions];
+    result = [result stringByReplacingOccurrencesOfString:@"+" withString:@"-"];
+    result = [result stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    result = [result stringByReplacingOccurrencesOfString:@"=" withString:@""];
+    return result;
+}
+
+- (BOOL)isEqual:(id)object {
+    if (![object isKindOfClass:[MTProxySecretType3 class]]) {
+        return false;
+    }
+    MTProxySecretType3 *other = object;
     if (![self.secret isEqual:other.secret]) {
         return false;
     }
