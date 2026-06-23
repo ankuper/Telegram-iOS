@@ -1,5 +1,7 @@
 #import "MTTcpConnection.h"
 
+#import "t3_client.h"
+
 #import <MtProtoKit/MTLogging.h>
 #import <MtProtoKit/MTQueue.h>
 #import <MtProtoKit/MTTimer.h>
@@ -856,6 +858,14 @@ struct ctr_state {
     NSMutableArray<MTTcpSendData *> *_pendingDataQueue;
     NSMutableData *_receivedDataBuffer;
     MTTcpReceiveData *_pendingReceiveData;
+
+    bool _isType3;
+    t3_client_stream *_t3Stream;
+    dispatch_source_t _t3ReadSource;
+    dispatch_source_t _t3WriteSource;
+    bool _t3WriteSuspended;
+    bool _t3Ready;
+    NSUInteger _t3SendOffset;
 }
 
 @property (nonatomic) int64_t packetHeadDecodeToken;
@@ -927,6 +937,9 @@ struct ctr_state {
             if ([_mtpSecret isKindOfClass:[MTProxySecretType1 class]] || [_mtpSecret isKindOfClass:[MTProxySecretType2 class]]) {
                 _useIntermediateFormat = true;
             }
+            if ([_mtpSecret isKindOfClass:[MTProxySecretType3 class]]) {
+                _isType3 = true;
+            }
         }
         
         _resolveDisposable = [[MTMetaDisposable alloc] init];
@@ -960,13 +973,34 @@ struct ctr_state {
     MTTimer *responseTimeoutTimer = _responseTimeoutTimer;
     
     MTMetaDisposable *resolveDisposable = _resolveDisposable;
-    
+
+    t3_client_stream *t3Stream = _t3Stream;
+    dispatch_source_t t3ReadSource = _t3ReadSource;
+    dispatch_source_t t3WriteSource = _t3WriteSource;
+    bool t3WriteSuspended = _t3WriteSuspended;
+    _t3Stream = NULL;
+    _t3ReadSource = nil;
+    _t3WriteSource = nil;
+
     [[MTTcpConnection tcpQueue] dispatchOnQueue:^
     {
         [responseTimeoutTimer invalidate];
-        
+
         [socket disconnect];
         [resolveDisposable dispose];
+
+        if (t3ReadSource != nil) {
+            dispatch_source_cancel(t3ReadSource);
+        }
+        if (t3WriteSource != nil) {
+            if (t3WriteSuspended) {
+                dispatch_resume(t3WriteSource);
+            }
+            dispatch_source_cancel(t3WriteSource);
+        }
+        if (t3Stream != NULL) {
+            t3_client_destroy(t3Stream);
+        }
     }];
 }
 
@@ -990,6 +1024,10 @@ struct ctr_state {
 {
     [[MTTcpConnection tcpQueue] dispatchOnQueue:^
     {
+        if (_isType3) {
+            [self startType3];
+            return;
+        }
         if (_socket == nil)
         {
             if (_makeTcpConnectionInterface) {
@@ -1150,7 +1188,8 @@ struct ctr_state {
         if (!_closed)
         {
             _closed = true;
-            
+
+            [self t3Cleanup];
             [_socket disconnect];
             [_socket resetDelegate];
             _socket = nil;
@@ -1164,7 +1203,248 @@ struct ctr_state {
     }];
 }
 
+- (void)startType3 {
+    if (_closed || _t3Stream != NULL) {
+        return;
+    }
+
+    if (![_mtpSecret isKindOfClass:[MTProxySecretType3 class]]) {
+        [self closeAndNotifyWithError:true];
+        return;
+    }
+    MTProxySecretType3 *secret = (MTProxySecretType3 *)_mtpSecret;
+    if (secret.secret.length < 16) {
+        [self closeAndNotifyWithError:true];
+        return;
+    }
+
+    NSString *domain = secret.domain;
+    NSString *host = domain;
+    NSString *path = @"/";
+    NSRange slashRange = [domain rangeOfString:@"/"];
+    if (slashRange.location != NSNotFound) {
+        host = [domain substringToIndex:slashRange.location];
+        path = [domain substringFromIndex:slashRange.location];
+    }
+    if (host.length == 0) {
+        host = _mtpIp;
+    }
+    if (path.length == 0) {
+        path = @"/";
+    }
+    int port = _mtpPort != 0 ? (int)_mtpPort : 443;
+    NSString *endpointUrl = [NSString stringWithFormat:@"https://%@:%d%@", host, port, path];
+
+    uint8_t key16[16];
+    [secret.secret getBytes:key16 length:16];
+
+    t3_client_stream *stream = NULL;
+    t3_result_t createResult = t3_client_create(endpointUrl.UTF8String, key16, (int16_t)_datacenterTag, &stream);
+    if (createResult != T3_OK || stream == NULL) {
+        if (MTLogEnabled()) {
+            MTLog(@"[MTTcpConnection#%" PRIxPTR " t3_client_create failed: %d]", (intptr_t)self, (int)createResult);
+        }
+        [self closeAndNotifyWithError:true];
+        return;
+    }
+    _t3Stream = stream;
+
+    int fd = t3_client_get_fd(stream);
+    if (fd < 0) {
+        [self closeAndNotifyWithError:true];
+        return;
+    }
+
+    if (MTLogEnabled()) {
+        MTLog(@"[MTTcpConnection#%" PRIxPTR " connecting via Type3 %@ dc %d]", (intptr_t)self, endpointUrl, (int)_datacenterTag);
+    }
+
+    dispatch_queue_t queue = [[MTTcpConnection tcpQueue] nativeQueue];
+    __weak MTTcpConnection *weakSelf = self;
+
+    _t3ReadSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)fd, 0, queue);
+    dispatch_source_set_event_handler(_t3ReadSource, ^{
+        __strong MTTcpConnection *strongSelf = weakSelf;
+        [strongSelf t3Pump];
+    });
+    _t3WriteSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, (uintptr_t)fd, 0, queue);
+    dispatch_source_set_event_handler(_t3WriteSource, ^{
+        __strong MTTcpConnection *strongSelf = weakSelf;
+        [strongSelf t3Pump];
+    });
+    dispatch_resume(_t3ReadSource);
+    dispatch_resume(_t3WriteSource);
+
+    [self t3Pump];
+}
+
+- (void)t3Pump {
+    if (_closed || _t3Stream == NULL) {
+        return;
+    }
+
+    t3_client_pump(_t3Stream);
+
+    t3_client_state_t state = t3_client_get_state(_t3Stream);
+    if (state == T3_CLIENT_STATE_ERROR || state == T3_CLIENT_STATE_CLOSED) {
+        if (MTLogEnabled()) {
+            MTLog(@"[MTTcpConnection#%" PRIxPTR " Type3 transport closed/error: %s]", (intptr_t)self, t3_client_last_error(_t3Stream));
+        }
+        [self closeAndNotifyWithError:true];
+        return;
+    }
+
+    if (!_t3Ready && state == T3_CLIENT_STATE_READY) {
+        _t3Ready = true;
+        _readyToSendData = true;
+        if (!_t3WriteSuspended && _t3WriteSource != nil) {
+            dispatch_suspend(_t3WriteSource);
+            _t3WriteSuspended = true;
+        }
+    }
+
+    if (_t3Ready) {
+        [self sendDataIfNeeded];
+        [self t3ReadAvailable];
+    }
+}
+
+- (void)t3ReadAvailable {
+    if (_closed || _t3Stream == NULL) {
+        return;
+    }
+
+    NSMutableData *buffer = [[NSMutableData alloc] initWithLength:1024 * 1024];
+    while (true) {
+        size_t outLength = 0;
+        t3_result_t readResult = t3_client_read(_t3Stream, buffer.mutableBytes, buffer.length, &outLength);
+        if (readResult == T3_ERR_BUF_TOO_SMALL || outLength == 0) {
+            break;
+        }
+        if (readResult != T3_OK) {
+            [self closeAndNotifyWithError:true];
+            return;
+        }
+        NSData *packetData = [[NSData alloc] initWithBytes:buffer.mutableBytes length:outLength];
+        [self t3ProcessReceivedPacket:packetData];
+        if (_closed || _t3Stream == NULL) {
+            return;
+        }
+    }
+}
+
+- (void)t3ProcessReceivedPacket:(NSData *)packetData {
+    if (packetData.length % 4 != 0) {
+        int32_t realLength = ((int32_t)packetData.length) & (~3);
+        packetData = [packetData subdataWithRange:NSMakeRange(0, (NSUInteger)realLength)];
+    }
+
+    bool ignorePacket = false;
+    if (packetData.length >= 4) {
+        int32_t header = 0;
+        [packetData getBytes:&header length:4];
+        if (header == 0xffffffff) {
+            if (packetData.length >= 8) {
+                int32_t ackId = 0;
+                [packetData getBytes:&ackId range:NSMakeRange(4, 4)];
+                ackId &= ((uint32_t)0xffffffff ^ (uint32_t)(((uint32_t)1) << 31));
+                ackId = (int32_t)OSSwapInt32(ackId);
+
+                id<MTTcpConnectionDelegate> delegate = _delegate;
+                if ([delegate respondsToSelector:@selector(tcpConnectionReceivedQuickAck:quickAck:)]) {
+                    [delegate tcpConnectionReceivedQuickAck:self quickAck:ackId];
+                }
+
+                ignorePacket = true;
+            }
+        } else if (header == 0 && packetData.length < 16) {
+            ignorePacket = true;
+        }
+    }
+
+    if (!ignorePacket) {
+        if (_connectionReceivedData)
+            _connectionReceivedData(packetData);
+        id<MTTcpConnectionDelegate> delegate = _delegate;
+        if ([delegate respondsToSelector:@selector(tcpConnectionReceivedData:networkType:data:)])
+            [delegate tcpConnectionReceivedData:self networkType:_lastNetworkType data:packetData];
+    }
+}
+
+- (void)sendType3DataIfNeeded {
+    if (_closed || !_t3Ready || _t3Stream == NULL) {
+        return;
+    }
+
+    while (_pendingDataQueue.count != 0) {
+        MTTcpSendData *dataToSend = _pendingDataQueue[0];
+
+        bool blocked = false;
+        bool failed = false;
+        while (_t3SendOffset < dataToSend.dataSet.count) {
+            NSData *data = dataToSend.dataSet[_t3SendOffset];
+            t3_result_t writeResult = t3_client_write(_t3Stream, data.bytes, data.length);
+            if (writeResult == T3_ERR_BUF_TOO_SMALL) {
+                blocked = true;
+                break;
+            } else if (writeResult != T3_OK) {
+                failed = true;
+                break;
+            }
+            _t3SendOffset += 1;
+        }
+
+        if (blocked) {
+            if (_t3WriteSuspended && _t3WriteSource != nil) {
+                dispatch_resume(_t3WriteSource);
+                _t3WriteSuspended = false;
+            }
+            return;
+        }
+
+        [_pendingDataQueue removeObjectAtIndex:0];
+        _t3SendOffset = 0;
+
+        if (dataToSend.completion) {
+            dataToSend.completion(!failed);
+        }
+
+        if (failed) {
+            [self closeAndNotifyWithError:true];
+            return;
+        }
+    }
+
+    if (!_t3WriteSuspended && _t3WriteSource != nil) {
+        dispatch_suspend(_t3WriteSource);
+        _t3WriteSuspended = true;
+    }
+}
+
+- (void)t3Cleanup {
+    if (_t3ReadSource != nil) {
+        dispatch_source_cancel(_t3ReadSource);
+        _t3ReadSource = nil;
+    }
+    if (_t3WriteSource != nil) {
+        if (_t3WriteSuspended) {
+            dispatch_resume(_t3WriteSource);
+            _t3WriteSuspended = false;
+        }
+        dispatch_source_cancel(_t3WriteSource);
+        _t3WriteSource = nil;
+    }
+    if (_t3Stream != NULL) {
+        t3_client_destroy(_t3Stream);
+        _t3Stream = NULL;
+    }
+}
+
 - (void)sendDataIfNeeded {
+    if (_isType3) {
+        [self sendType3DataIfNeeded];
+        return;
+    }
     while (_pendingDataQueue.count != 0) {
         MTTcpSendData *dataToSend = _pendingDataQueue[0];
         [_pendingDataQueue removeObjectAtIndex:0];

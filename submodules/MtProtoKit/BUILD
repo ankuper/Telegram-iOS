@@ -18,6 +18,7 @@ objc_library(
     ],
     deps = [
         "//submodules/EncryptionProvider:EncryptionProvider",
+        "//third-party/libteleproto3:teleproto3",
     ],
     sdk_frameworks = [
         "Foundation",

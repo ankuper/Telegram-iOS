@@ -1485,10 +1485,10 @@ public class Account {
         }))
         self.managedOperationsDisposable.add((accountManager.sharedData(keys: [SharedDataKeys.proxySettings])
         |> map { sharedData -> ProxyServerSettings? in
-            if let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self) {
+            if let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self), settings.effectiveActiveServer != nil {
                 return settings.effectiveActiveServer
             } else {
-                return nil
+                return ProxySettings.defaultSettings.effectiveActiveServer
             }
         }
         |> distinctUntilChanged).start(next: { activeServer in

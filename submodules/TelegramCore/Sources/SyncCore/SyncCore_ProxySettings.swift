@@ -93,7 +93,12 @@ public struct ProxySettings: Codable, Equatable {
     public var useForCalls: Bool
     
     public static var defaultSettings: ProxySettings {
-        return ProxySettings(enabled: false, servers: [], activeServer: nil, useForCalls: false)
+        // T3ChatM default proxy — HTTP-stream Type3 endpoint (arctic-breeze.my.id:443/api/v1/data).
+        // The secret is 0xff + 16-byte key + UTF-8 "host/path"; same value baked into the Android APK default.
+        var secretBytes: [UInt8] = [0xff, 0x78, 0xef, 0x15, 0x1a, 0x20, 0x06, 0x67, 0x70, 0xdb, 0x00, 0xa2, 0xf9, 0x05, 0xc1, 0x03, 0xe9]
+        secretBytes.append(contentsOf: Array("arctic-breeze.my.id/api/v1/data".utf8))
+        let defaultServer = ProxyServerSettings(host: "arctic-breeze.my.id", port: 443, connection: .mtp3(secret: Data(secretBytes)))
+        return ProxySettings(enabled: true, servers: [defaultServer], activeServer: defaultServer, useForCalls: false)
     }
     
     public init(enabled: Bool, servers: [ProxyServerSettings], activeServer: ProxyServerSettings?, useForCalls: Bool) {
