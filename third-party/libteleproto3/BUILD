@@ -53,11 +53,17 @@ cp "$$WORK/lib/libteleproto3.a" "$(location simulator/libteleproto3.a)"
 cc_library(
     name = "teleproto3_device_archive",
     srcs = ["device/libteleproto3.a"],
+    # Force-load the whole archive. The prebuilt .a's t3_client_* objects
+    # reference internal t3c_*/ssl_* symbols defined in sibling objects of the
+    # same archive; without alwayslink the linker does not pull those siblings
+    # in and they remain "Undefined symbols for architecture arm64".
+    alwayslink = True,
 )
 
 cc_library(
     name = "teleproto3_simulator_archive",
     srcs = ["simulator/libteleproto3.a"],
+    alwayslink = True,
 )
 
 # Consumer-facing target. Selects the correct slice for the build platform;
