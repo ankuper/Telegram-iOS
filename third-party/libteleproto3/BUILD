@@ -50,22 +50,31 @@ cp "$$WORK/lib/libteleproto3.a" "$(location simulator/libteleproto3.a)"
 """,
 )
 
+# Each prebuilt archive carries the SSL_ctrl shim as its OWN dep so the linker
+# emits ssl_compat immediately AFTER libteleproto3.a — the natural order that
+# resolves the archive's one SSL_ctrl reference. Deliberately NOT a force-loaded
+# (alwayslink) sibling of the objc_library: force_load would pull the shim — and
+# transitively libssl/libcrypto — to the front of EVERY binary that links
+# teleproto3, reordering libcrypto ahead of other on-demand consumers (e.g. the
+# Siri extension's OpenSSLEncryptionProvider) and stranding their symbols.
 cc_library(
     name = "teleproto3_device_archive",
     srcs = ["device/libteleproto3.a"],
+    deps = [":ssl_compat"],
 )
 
 cc_library(
     name = "teleproto3_simulator_archive",
     srcs = ["simulator/libteleproto3.a"],
+    deps = [":ssl_compat"],
 )
 
 # OpenSSL→BoringSSL ABI bridge for the prebuilt .a. libteleproto3.a is compiled
 # against OpenSSL headers, where the SNI setter expands to the legacy SSL_ctrl()
 # macro; BoringSSL dropped SSL_ctrl. teleproto3 makes exactly one SSL_ctrl call
 # (SNI), so this single-function shim forwards it to BoringSSL's real setter.
-# alwayslink = force_load: the symbol must be present regardless of link order,
-# since libteleproto3.a (which references it) is itself an archive.
+# On-demand (no alwayslink): pulled only when libteleproto3.a references
+# SSL_ctrl, and ordered right after it via the archive deps above.
 cc_library(
     name = "ssl_compat",
     srcs = ["ssl_compat.c"],
@@ -73,7 +82,6 @@ cc_library(
         "//third-party/boringssl:crypto",
         "//third-party/boringssl:ssl",
     ],
-    alwayslink = True,
 )
 
 # Consumer-facing target. Selects the correct slice for the build platform;
@@ -96,8 +104,6 @@ objc_library(
         # no second, conflicting OpenSSL is pulled into the binary.
         "//third-party/boringssl:crypto",
         "//third-party/boringssl:ssl",
-        # SSL_ctrl shim: BoringSSL dropped it; teleproto3's one SNI call needs it.
-        ":ssl_compat",
     ],
     visibility = ["//visibility:public"],
 )
