@@ -175,6 +175,12 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     linkstatic = 1,
+    # force_load all of libcrypto: thin crypto closures (e.g. the Siri
+    # IntentsExtension, whose only crypto consumer is OpenSSLEncryptionProvider)
+    # otherwise drop on-demand members like BIO_s_mem when another consumer
+    # (teleproto3) reorders this archive on the link line. alwayslink makes every
+    # crypto symbol unconditionally present, eliminating the ordering hazard.
+    alwayslink = 1,
 )
 
 cc_library(
