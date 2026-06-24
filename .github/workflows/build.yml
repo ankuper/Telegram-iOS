@@ -29,6 +29,10 @@ jobs:
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
       - name: Build the App
+        env:
+          T3CHATM_IOS_DIST_P12: ${{ secrets.T3CHATM_IOS_DIST_P12 }}
+          T3CHATM_IOS_DIST_P12_PASSWORD: ${{ secrets.T3CHATM_IOS_DIST_P12_PASSWORD }}
+          T3CHATM_IOS_PROFILES_TGZ: ${{ secrets.T3CHATM_IOS_PROFILES_TGZ }}
         run: |
           set -x
 
@@ -49,12 +53,36 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          # --- t3chatm real codesigning (branded App Store / TestFlight) ---
+          # Build a plaintext codesigning dir; Make.py's copy_profiles_from_directory
+          # matches each profile by team_id+bundle_id and renames it per its internal
+          # profile_name_mapping, so the 7 raw profiles can keep any filenames.
+          CS="$SOURCE_DIR/build-system/t3chatm-codesigning"
+          rm -rf "$CS"; mkdir -p "$CS/certs" "$CS/profiles"
+          printf '%s' "$T3CHATM_IOS_DIST_P12" | base64 --decode > "$CS/certs/dist.p12"
+          printf '%s' "$T3CHATM_IOS_PROFILES_TGZ" | base64 --decode > /tmp/t3profiles.tgz
+          tar -xzf /tmp/t3profiles.tgz -C "$CS/profiles"
+          # copy_profiles_from_directory uses os.listdir (non-recursive) — flatten.
+          find "$CS/profiles" -mindepth 2 -name '*.mobileprovision' -exec mv -f {} "$CS/profiles/" \;
+          ls -1 "$CS/profiles"
+
+          # Import the signing identity into a temp keychain. Our .p12 has a non-empty
+          # password, so we import inline (ImportCertificates.py assumes an empty one).
+          KEYCHAIN=temp.keychain
+          security create-keychain -p secret "$KEYCHAIN" || true
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/\"//g')
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p secret "$KEYCHAIN"
+          security import "$CS/certs/dist.p12" -k "$KEYCHAIN" -P "$T3CHATM_IOS_DIST_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import build-system/AppleWWDRCAG3.cer -k "$KEYCHAIN" -P '' -T /usr/bin/codesign -T /usr/bin/security || true
+          security set-key-partition-list -S apple-tool:,apple: -k secret "$KEYCHAIN" >/dev/null
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
-            --configurationPath="build-system/appstore-configuration.json" \
-            --codesigningInformationPath=build-system/fake-codesigning \
+            --configurationPath="build-system/t3chatm-appstore-configuration.json" \
+            --codesigningInformationPath="$CS" \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
@@ -82,7 +110,7 @@ jobs:
           tag_name: build-${{ env.BUILD_NUMBER }}
           release_name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})
           body: |
-            An unsigned build of Telegram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})
+            A signed t3chatm (com.t3chatm.ios) build for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) — App Store / TestFlight distribution.
           draft: false
           prerelease: false
 
