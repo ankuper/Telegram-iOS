@@ -74,10 +74,12 @@ objc_library(
         "@build_bazel_apple_support//constraints:simulator": [":teleproto3_simulator_archive"],
         "//conditions:default": [":teleproto3_device_archive"],
     }) + [
-        # libteleproto3.a's crypto (AES-256-CTR / obfs2) calls the OpenSSL EVP API;
-        # resolve EVP_*/ERR_* against the app's BoringSSL (the same crypto the rest
-        # of Telegram links — avoids pulling a second, conflicting OpenSSL).
+        # libteleproto3.a calls the OpenSSL API: EVP_*/ERR_* for AES-256-CTR + obfs2
+        # (crypto) and SSL_*/TLS_* for the Type3 TLS transport (ssl). Resolve both
+        # against the app's BoringSSL — the same crypto Telegram already links — so
+        # no second, conflicting OpenSSL is pulled into the binary.
         "//third-party/boringssl:crypto",
+        "//third-party/boringssl:ssl",
     ],
     visibility = ["//visibility:public"],
 )
