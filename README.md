@@ -1,116 +1,79 @@
-# Telegram iOS Source Code Compilation Guide
+<!-- Язык / Language: [Русский](#t3chatm) · [English](#t3chatm-en) -->
 
-We welcome all developers to use our API and source code to create applications on our platform.
-There are several things we require from **all developers** for the moment.
+<a name="t3chatm"></a>
+# T3ChatM
 
-# Creating your Telegram Application
+**Telegram, который работает в РФ — без VPN и без настройки.**
 
-1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
-2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
-3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
-3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
-4. Please remember to publish **your** code too in order to comply with the licences.
+Форк Telegram со встроенным транспортом **Type3 (mtProxy3)**: трафик идёт внутри
+обычного HTTPS, поэтому DPI/ТСПУ видит веб-трафик, а не Telegram. Прокси уже
+зашит в сборку — скачал и открыл.
 
-# Quick Compilation Guide
+## Скачать
 
-## Get the Code
+| Платформа | Ссылка |
+|---|---|
+| Desktop (Windows / macOS / Linux) | https://github.com/ankuper/tdesktop/releases/latest |
+| Android (APK) | https://github.com/ankuper/telegram-android/releases/latest |
+| iOS | https://github.com/ankuper/telegram-ios/releases |
 
-```
-git clone --recursive -j8 https://github.com/TelegramMessenger/Telegram-iOS.git
-```
+Установи и открой. Настраивать ничего не нужно — прокси встроен.
 
-## Setup Xcode
+## Свой прокси (независимость / резерв)
 
-Install Xcode (directly from https://developer.apple.com/download/applications or using the App Store).
+Если дефолтный прокси недоступен — подними свой
+[teleproxy](https://github.com/ankuper/teleproxy) (~5 мин, Docker) и укажи его в
+**Настройки → Подключение → Прокси**.
 
-## Adjust Configuration
+## Как это работает
 
-1. Generate a random identifier:
-```
-openssl rand -hex 8
-```
-2. Create a new Xcode project. Use `Telegram` as the Product Name. Use `org.{identifier from step 1}` as the Organization Identifier.
-3. Open `Keychain Access` and navigate to `Certificates`. Locate `Apple Development: your@email.address (XXXXXXXXXX)` and double tap the certificate. Under `Details`, locate `Organizational Unit`. This is the Team ID.
-4. Edit `build-system/template_minimal_development_configuration.json`. Use data from the previous steps.
+MTProto заворачивается в HTTP-stream поверх TLS (протокол **Type3**) — для DPI
+неотличимо от обычного HTTPS. Описание протокола и библиотека:
+[teleproto3](https://github.com/ankuper/teleproto3).
 
-## Generate an Xcode project
+---
 
-```
-python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=build-system/template_minimal_development_configuration.json \
-    --xcodeManagedCodesigning
-```
+<a name="t3chatm-en"></a>
+# T3ChatM (English)
 
-# Advanced Compilation Guide
+**Telegram that works under censorship — no VPN, no setup.**
 
-## Xcode
+A Telegram fork with the built-in **Type3 (mtProxy3)** transport: traffic is
+tunneled inside ordinary HTTPS, so DPI sees web traffic, not Telegram. The proxy
+is baked into the build — just download and open.
 
-1. Copy and edit `build-system/appstore-configuration.json`.
-2. Copy `build-system/fake-codesigning`. Create and download provisioning profiles, using the `profiles` folder as a reference for the entitlements.
-3. Generate an Xcode project:
-```
-python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=configuration_from_step_1.json \
-    --codesigningInformationPath=directory_from_step_2
-```
+## Download
 
-## IPA
+| Platform | Link |
+|---|---|
+| Desktop (Windows / macOS / Linux) | https://github.com/ankuper/tdesktop/releases/latest |
+| Android (APK) | https://github.com/ankuper/telegram-android/releases/latest |
+| iOS | https://github.com/ankuper/telegram-ios/releases |
 
-1. Repeat the steps from the previous section. Use distribution provisioning profiles.
-2. Run:
-```
-python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    build \
-    --configurationPath=...see previous section... \
-    --codesigningInformationPath=...see previous section... \
-    --buildNumber=100001 \
-    --configuration=release_arm64
-```
+Install and open. No configuration needed — the proxy is built in.
 
-# FAQ
+## Run your own proxy (independence / fallback)
 
-## Xcode is stuck at "build-request.json not updated yet"
+Run your own [teleproxy](https://github.com/ankuper/teleproxy) (~5 min, Docker)
+and set it in **Settings → Connection → Proxy**.
 
-Occasionally, you might observe the following message in your build log:
-```
-"/Users/xxx/Library/Developer/Xcode/DerivedData/Telegram-xxx/Build/Intermediates.noindex/XCBuildData/xxx.xcbuilddata/build-request.json" not updated yet, waiting...
-```
+## How it works
 
-Should this occur, simply cancel the ongoing build and initiate a new one.
+MTProto is wrapped in an HTTP-stream over TLS (the **Type3** protocol) — to DPI
+it's indistinguishable from regular HTTPS. Protocol spec and library:
+[teleproto3](https://github.com/ankuper/teleproto3).
 
-## Telegram_xcodeproj: no such package 
+---
 
-Following a system restart, the auto-generated Xcode project might encounter a build failure accompanied by this error:
-```
-ERROR: Skipping '@rules_xcodeproj_generated//generator/Telegram/Telegram_xcodeproj:Telegram_xcodeproj': no such package '@rules_xcodeproj_generated//generator/Telegram/Telegram_xcodeproj': BUILD file not found in directory 'generator/Telegram/Telegram_xcodeproj' of external repository @rules_xcodeproj_generated. Add a BUILD file to a directory to mark it as a package.
-```
+## Поддержать инфраструктуру · Support
 
-If you encounter this issue, re-run the project generation steps in the README.
+Проект держится на одном прокси. Поддержать сервера (TON):
 
+`UQAYS0k0PEky8BUE1Rij90v8-CmOWsuhAzdLTHOzYC-qZ0pV`
 
-# Tips
+The project runs on a single proxy. Support the servers (TON) — address above.
 
-## Codesigning is not required for simulator-only builds
+---
 
-Add `--disableProvisioningProfiles`:
-```
-python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=path-to-configuration.json \
-    --codesigningInformationPath=path-to-provisioning-data \
-    --disableProvisioningProfiles
-```
-
-## Versions
-
-Each release is built using a specific Xcode version (see `versions.json`). The helper script checks the versions of the installed software and reports an error if they don't match the ones specified in `versions.json`. It is possible to bypass these checks:
-
-```
-python3 build-system/Make/Make.py --overrideXcodeVersion build ... # Don't check the version of Xcode
-```
+> Независимый форк, не аффилирован с Telegram Messenger.
+> Independent fork, not affiliated with Telegram Messenger.
