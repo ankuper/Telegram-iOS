@@ -86,19 +86,20 @@ jobs:
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
-          # collect ipa
+          # collect ipa — locate it via find; the bazel config-tree dir name varies
+          # with min-os/configuration, so a fixed glob (applebin_ios-...-opt-ST-*)
+          # does not match our tree (ios_arm64-opt-ios-arm64-min13.0-ST-*).
           OUTPUT_PATH="build/artifacts"
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa; do
-            cp "$f" $OUTPUT_PATH/
-          done
+          IPA=$(find -L bazel-out -type f -path '*/bin/Telegram/Telegram.ipa' 2>/dev/null | head -1)
+          if [ -z "$IPA" ]; then echo "ERROR: Telegram.ipa not found under bazel-out"; find -L bazel-out -name 'Telegram.ipa' 2>/dev/null; exit 1; fi
+          echo "Collecting IPA: $IPA"
+          cp "$IPA" "$OUTPUT_PATH/Telegram.ipa"
 
-          # collect dsym
+          # collect dsym (same tree-name caveat)
           mkdir -p build/DSYMs
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.dSYM; do
-            cp -R "$f" build/DSYMs/
-          done
+          find -L bazel-out -type d -path '*/bin/Telegram/*.dSYM' 2>/dev/null -exec cp -R {} build/DSYMs/ \;
           zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
 
       - name: Create Release
