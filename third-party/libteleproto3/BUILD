@@ -60,6 +60,22 @@ cc_library(
     srcs = ["simulator/libteleproto3.a"],
 )
 
+# OpenSSL→BoringSSL ABI bridge for the prebuilt .a. libteleproto3.a is compiled
+# against OpenSSL headers, where the SNI setter expands to the legacy SSL_ctrl()
+# macro; BoringSSL dropped SSL_ctrl. teleproto3 makes exactly one SSL_ctrl call
+# (SNI), so this single-function shim forwards it to BoringSSL's real setter.
+# alwayslink = force_load: the symbol must be present regardless of link order,
+# since libteleproto3.a (which references it) is itself an archive.
+cc_library(
+    name = "ssl_compat",
+    srcs = ["ssl_compat.c"],
+    deps = [
+        "//third-party/boringssl:crypto",
+        "//third-party/boringssl:ssl",
+    ],
+    alwayslink = True,
+)
+
 # Consumer-facing target. Selects the correct slice for the build platform;
 # headers are identical across slices so they are exposed unconditionally.
 # Type3 uses SecRandomCopyBytes (Security.framework) for its CSPRNG.
@@ -80,6 +96,8 @@ objc_library(
         # no second, conflicting OpenSSL is pulled into the binary.
         "//third-party/boringssl:crypto",
         "//third-party/boringssl:ssl",
+        # SSL_ctrl shim: BoringSSL dropped it; teleproto3's one SNI call needs it.
+        ":ssl_compat",
     ],
     visibility = ["//visibility:public"],
 )
