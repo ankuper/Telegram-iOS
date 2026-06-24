@@ -192,6 +192,12 @@ cc_library(
         ":crypto",
         ":ssl_headers",
     ],
+    # Same ordering hazard as :crypto, one layer up: thin closures linking libssl
+    # via a second consumer (libwebrtc's OpenSSL adapter -> DTLS_method,
+    # SSL_alert_*/SSL_state_string_long) drop those on-demand members once
+    # teleproto3 reorders the archive. force_load all of libssl so they are
+    # unconditionally present.
+    alwayslink = 1,
 )
 
 cc_binary(
