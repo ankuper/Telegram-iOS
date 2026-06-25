@@ -102,37 +102,15 @@ jobs:
           find -L bazel-out -type d -path '*/bin/Telegram/*.dSYM' 2>/dev/null -exec cp -R {} build/DSYMs/ \;
           zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Expose the signed IPA (+ dSYM zip) as a workflow artifact. upload-artifact
+      # uses the Actions runtime token, so it works regardless of the repo's
+      # GITHUB_TOKEN contents permission (create-release needs contents:write,
+      # which this repo's default token lacks -> "Resource not accessible by
+      # integration"). Download from the run's Artifacts section.
+      - name: Upload signed IPA + dSYM
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: build-${{ env.BUILD_NUMBER }}
-          release_name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})
-          body: |
-            A signed t3chatm (com.t3chatm.ios) build for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) — App Store / TestFlight distribution.
-          draft: false
-          prerelease: false
-
-      - name: Upload Release IPA
-        id: upload-release-ipa 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: /Users/Shared/telegram-ios/build/artifacts/Telegram.ipa
-          asset_name: Telegram.ipa
-          asset_content_type: application/zip
-
-      - name: Upload Release DSYM
-        id: upload-release-dsym 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: /Users/Shared/telegram-ios/build/artifacts/Telegram.DSYMs.zip
-          asset_name: Telegram.DSYMs.zip
-          asset_content_type: application/zip
+          name: t3chatm-signed-${{ env.BUILD_NUMBER }}
+          path: /Users/Shared/telegram-ios/build/artifacts/
+          retention-days: 30
+          if-no-files-found: error
