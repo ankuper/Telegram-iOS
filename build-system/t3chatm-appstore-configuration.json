@@ -1,14 +1,14 @@
 {
 	"bundle_id": "com.t3chatm.ios",
-	"api_id": "8",
-	"api_hash": "7245de8e747a0d6fbe11f7cc14fcc0bb",
+	"api_id": "32145947",
+	"api_hash": "9d87220baa67f06fafac5a44882807b8",
 	"team_id": "MRPTPU87VT",
 	"app_center_id": "0",
 	"is_internal_build": "false",
 	"is_appstore_build": "true",
 	"appstore_id": "0",
-	"app_specific_url_scheme": "tg",
-	"premium_iap_product_id": "org.telegram.telegramPremium.monthly",
+	"app_specific_url_scheme": "t3chatm",
+	"premium_iap_product_id": "com.t3chatm.premium.monthly",
 	"enable_siri": false,
 	"enable_icloud": false
 }
