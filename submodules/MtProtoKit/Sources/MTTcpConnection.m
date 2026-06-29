@@ -1273,7 +1273,12 @@ struct ctr_state {
         [strongSelf t3Pump];
     });
     dispatch_resume(_t3ReadSource);
-    dispatch_resume(_t3WriteSource);
+    // Write source stays suspended until we actually have data to send.
+    // lib drives SSL_write itself inside pump (on READ events); if we keep
+    // write source resumed, it fires continuously while fd is writable, busy-
+    // looping the pump and leaking allocations until OOM. Resume on demand
+    // from sendType3DataIfNeeded when t3_client_write returns BUF_TOO_SMALL.
+    _t3WriteSuspended = true;
 
     [self t3Pump];
 }
