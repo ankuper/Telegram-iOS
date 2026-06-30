@@ -1306,6 +1306,11 @@ struct ctr_state {
             dispatch_suspend(_t3WriteSource);
             _t3WriteSuspended = true;
         }
+        if (_connectionOpened)
+            _connectionOpened();
+        id<MTTcpConnectionDelegate> delegate = _delegate;
+        if ([delegate respondsToSelector:@selector(tcpConnectionOpened:)])
+            [delegate tcpConnectionOpened:self];
     }
 
     if (_t3Ready) {
@@ -1331,6 +1336,15 @@ struct ctr_state {
             return;
         }
         NSData *packetData = [[NSData alloc] initWithBytes:buffer.mutableBytes length:outLength];
+        if (MTLogEnabled()) {
+            NSUInteger dumpLen = MIN((NSUInteger)64, packetData.length);
+            NSMutableString *hexDump = [NSMutableString stringWithCapacity:dumpLen * 3];
+            const uint8_t *bytes = packetData.bytes;
+            for (NSUInteger i = 0; i < dumpLen; i++) {
+                [hexDump appendFormat:@"%02x ", bytes[i]];
+            }
+            MTLog(@"[MTTcpConnection#%" PRIxPTR " Type3 READ %zu bytes: %@%@]", (intptr_t)self, packetData.length, hexDump, packetData.length > 64 ? @"..." : @"");
+        }
         [self t3ProcessReceivedPacket:packetData];
         if (_closed || _t3Stream == NULL) {
             return;
@@ -1388,6 +1402,15 @@ struct ctr_state {
         bool failed = false;
         while (_t3SendOffset < dataToSend.dataSet.count) {
             NSData *data = dataToSend.dataSet[_t3SendOffset];
+            if (MTLogEnabled()) {
+                NSUInteger dumpLen = MIN((NSUInteger)64, data.length);
+                NSMutableString *hexDump = [NSMutableString stringWithCapacity:dumpLen * 3];
+                const uint8_t *bytes = data.bytes;
+                for (NSUInteger i = 0; i < dumpLen; i++) {
+                    [hexDump appendFormat:@"%02x ", bytes[i]];
+                }
+                MTLog(@"[MTTcpConnection#%" PRIxPTR " Type3 WRITE %lu bytes: %@%@]", (intptr_t)self, (unsigned long)data.length, hexDump, data.length > 64 ? @"..." : @"");
+            }
             t3_result_t writeResult = t3_client_write(_t3Stream, data.bytes, data.length);
             if (writeResult == T3_ERR_BUF_TOO_SMALL) {
                 blocked = true;
