@@ -238,7 +238,13 @@ public final class CallListController: TelegramBaseController {
 
     private func createGroupCall(peerIds: [EnginePeer.Id], isVideo: Bool, completion: (() -> Void)? = nil) {
         self.view.window?.endEditing(true)
-        
+
+        if self.context.sharedContext.callManager?.isMtp3ProxyActive == true {
+            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+            self.present(textAlertController(context: self.context, title: "Group calls not supported", text: "Group calls are not available over the Type3 proxy.", actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+            return
+        }
+
         guard !self.presentAccountFrozenInfoIfNeeded() else {
             return
         }

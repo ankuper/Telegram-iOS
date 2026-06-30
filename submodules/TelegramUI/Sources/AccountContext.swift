@@ -622,6 +622,11 @@ public final class AccountContextImpl: AccountContext {
     
     public func joinGroupCall(peerId: PeerId, invite: String?, requestJoinAsPeerId: ((@escaping (PeerId?) -> Void) -> Void)?, activeCall: EngineGroupCallDescription) {
         let callResult = self.sharedContext.callManager?.joinGroupCall(context: self, peerId: peerId, invite: invite, requestJoinAsPeerId: requestJoinAsPeerId, initialCall: activeCall, endCurrentIfAny: false)
+        if case .notSupportedOverProxy = callResult {
+            let presentationData = self.sharedContext.currentPresentationData.with { $0 }
+            self.sharedContext.mainWindow?.present(textAlertController(context: self, title: "Group calls not supported", text: "Group calls are not available over the Type3 proxy.", actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), on: .root)
+            return
+        }
         if let callResult = callResult, case let .alreadyInProgress(currentCallType) = callResult {
             if case let .peer(currentPeerId) = currentCallType, currentPeerId == peerId {
                 self.sharedContext.navigateToCurrentCall()
@@ -712,6 +717,11 @@ public final class AccountContextImpl: AccountContext {
             endCurrentIfAny: false,
             unmuteByDefault: unmuteByDefault
         )
+        if case .notSupportedOverProxy = result {
+            let presentationData = self.sharedContext.currentPresentationData.with { $0 }
+            self.sharedContext.mainWindow?.present(textAlertController(context: self, title: "Group calls not supported", text: "Group calls are not available over the Type3 proxy.", actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), on: .root)
+            return
+        }
         if case let .alreadyInProgress(currentCallType) = result {
             let dataInput: Signal<EnginePeer?, NoError>
             if case let .peer(currentPeerId) = currentCallType, let currentPeerId {

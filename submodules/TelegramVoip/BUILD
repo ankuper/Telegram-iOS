@@ -19,6 +19,7 @@ swift_library(
         "//submodules/FFMpegBinding",
         "//submodules/ManagedFile",
         "//submodules/AppBundle",
+        "//submodules/MtProtoKit:MtProtoKit",
     ],
     visibility = [
         "//visibility:public",

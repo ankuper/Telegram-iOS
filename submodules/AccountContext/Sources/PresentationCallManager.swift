@@ -19,6 +19,7 @@ public enum RequestCallResult {
 public enum JoinGroupCallManagerResult {
     case joined
     case alreadyInProgress(CallAlreadyInProgressType)
+    case notSupportedOverProxy
 }
 
 public enum RequestScheduleGroupCallResult {
@@ -594,7 +595,8 @@ public protocol PresentationCallManager: AnyObject {
     var currentGroupCallSignal: Signal<VideoChatCall?, NoError> { get }
     var hasActiveCall: Bool { get }
     var hasActiveGroupCall: Bool { get }
-    
+    var isMtp3ProxyActive: Bool { get }
+
     func requestCall(context: AccountContext, peerId: EnginePeer.Id, isVideo: Bool, endCurrentIfAny: Bool) -> RequestCallResult
     func joinGroupCall(context: AccountContext, peerId: EnginePeer.Id, invite: String?, requestJoinAsPeerId: ((@escaping (EnginePeer.Id?) -> Void) -> Void)?, initialCall: EngineGroupCallDescription, endCurrentIfAny: Bool) -> JoinGroupCallManagerResult
     func scheduleGroupCall(context: AccountContext, peerId: EnginePeer.Id, endCurrentIfAny: Bool, parentController: ViewController) -> RequestScheduleGroupCallResult

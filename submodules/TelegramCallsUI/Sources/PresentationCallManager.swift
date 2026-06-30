@@ -92,7 +92,12 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     public var hasActiveGroupCall: Bool {
         return self.currentGroupCall != nil
     }
-    
+
+    public var isMtp3ProxyActive: Bool {
+        if case .mtp3 = self.proxyServer?.connection { return true }
+        return false
+    }
+
     private let currentCallPromise = Promise<PresentationCall?>(nil)
     public var currentCallSignal: Signal<PresentationCall?, NoError> {
         return self.currentCallPromise.get()
@@ -287,9 +292,19 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         self.proxyServerDisposable = (accountManager.sharedData(keys: [SharedDataKeys.proxySettings])
         |> deliverOnMainQueue).start(next: { [weak self] sharedData in
-            if let strongSelf = self, let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self) {
-                if settings.enabled && settings.useForCalls {
-                    strongSelf.proxyServer = settings.activeServer
+            if let strongSelf = self {
+                let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self) ?? ProxySettings.defaultSettings
+                if settings.enabled {
+                    let server = settings.activeServer
+                    let isMtp3 = { () -> Bool in
+                        if case .mtp3 = server?.connection { return true }
+                        return false
+                    }()
+                    if settings.useForCalls || isMtp3 {
+                        strongSelf.proxyServer = server
+                    } else {
+                        strongSelf.proxyServer = nil
+                    }
                 } else {
                     strongSelf.proxyServer = nil
                 }
@@ -971,6 +986,9 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     }
     
     public func joinGroupCall(context: AccountContext, peerId: PeerId, invite: String?, requestJoinAsPeerId: ((@escaping (PeerId?) -> Void) -> Void)?, initialCall: EngineGroupCallDescription, endCurrentIfAny: Bool) -> JoinGroupCallManagerResult {
+        if case .mtp3 = self.proxyServer?.connection {
+            return .notSupportedOverProxy
+        }
         let begin: () -> Void = { [weak self] in
             if let requestJoinAsPeerId = requestJoinAsPeerId, (initialCall.isStream == nil || initialCall.isStream == false) {
                 requestJoinAsPeerId({ joinAsPeerId in
@@ -1145,6 +1163,9 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         endCurrentIfAny: Bool,
         unmuteByDefault: Bool
     ) -> JoinGroupCallManagerResult {
+        if case .mtp3 = self.proxyServer?.connection {
+            return .notSupportedOverProxy
+        }
         let begin: () -> Void = { [weak self] in
             guard let self else {
                 return

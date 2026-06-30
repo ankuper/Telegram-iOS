@@ -60,4 +60,5 @@
 #import <MtProtoKit/MTProtoEngine.h>
 #import <MtProtoKit/MTBindKeyMessageService.h>
 #import <MtProtoKit/MTFileBasedKeychain.h>
+#import <MtProtoKit/MT3CallShim.h>
 

@@ -107,7 +107,7 @@ public struct ProxySettings: Codable, Equatable {
         var secretBytes: [UInt8] = [0xff, 0x78, 0xef, 0x15, 0x1a, 0x20, 0x06, 0x67, 0x70, 0xdb, 0x00, 0xa2, 0xf9, 0x05, 0xc1, 0x03, 0xe9]
         secretBytes.append(contentsOf: Array("arctic-breeze.my.id/api/v1/data".utf8))
         let defaultServer = ProxyServerSettings(host: "arctic-breeze.my.id", port: 443, connection: .mtp3(secret: Data(secretBytes)))
-        return ProxySettings(enabled: true, servers: [defaultServer], activeServer: defaultServer, useForCalls: false)
+        return ProxySettings(enabled: true, servers: [defaultServer], activeServer: defaultServer, useForCalls: true)
     }
     
     public init(enabled: Bool, servers: [ProxyServerSettings], activeServer: ProxyServerSettings?, useForCalls: Bool) {

@@ -6,6 +6,7 @@ import TelegramUIPreferences
 import CoreMedia
 
 import TgVoipWebrtc
+import MtProtoKit
 
 #if os(iOS)
 import UIKit
@@ -902,7 +903,8 @@ public final class OngoingCallContext {
     private var signalingConnectionManager: QueueLocalObject<CallSignalingConnectionManager>?
     
     private let audioDevice: AudioDevice?
-    
+    private var t3CallShim: MT3CallShim?
+
     public static func versions(includeExperimental: Bool, includeReference: Bool) -> [(version: String, supportsVideo: Bool)] {
         var result: [(version: String, supportsVideo: Bool)] = []
         result.append(contentsOf: OngoingCallThreadLocalContextWebrtc.versions(withIncludeReference: includeReference).map { version -> (version: String, supportsVideo: Bool) in
@@ -913,7 +915,7 @@ public final class OngoingCallContext {
 
     public init(account: Account, callSessionManager: CallSessionManager, callId: CallId, internalId: CallSessionInternalId, proxyServer: ProxyServerSettings?, initialNetworkType: NetworkType, updatedNetworkType: Signal<NetworkType, NoError>, serializedData: String?, dataSaving: VoiceCallDataSaving, key: Data, isOutgoing: Bool, video: OngoingCallVideoCapturer?, connections: CallSessionConnectionSet, maxLayer: Int32, version: String, customParameters: String?, allowP2P: Bool, enableTCP: Bool, enableStunMarking: Bool, audioSessionActive: Signal<Bool, NoError>, logName: String, preferredVideoCodec: String?, audioDevice: AudioDevice?) {
         let _ = setupLogs
-        
+
         self.callId = callId
         self.internalId = internalId
         self.account = account
@@ -938,14 +940,44 @@ public final class OngoingCallContext {
         |> deliverOn(queue)).start(next: { [weak self] _ in
             if let strongSelf = self {
                 var allowP2P = allowP2P
-                
+                var enableTCP = enableTCP
+
                 var voipProxyServer: VoipProxyServerWebrtc?
                 if let proxyServer = proxyServer {
                     switch proxyServer.connection {
                     case let .socks5(username, password):
                         voipProxyServer = VoipProxyServerWebrtc(host: proxyServer.host, port: proxyServer.port, username: username, password: password)
-                    case .mtp, .mtp3:
+                    case .mtp:
                         break
+                    case let .mtp3(secretData):
+                        let secretHex = secretData.map { String(format: "%02x", $0) }.joined()
+                        let path: String
+                        if secretData.count > 17 {
+                            let domainBytes = secretData.dropFirst(17)
+                            let domainStr = String(data: domainBytes, encoding: .utf8) ?? ""
+                            if let slashIdx = domainStr.firstIndex(of: "/") {
+                                path = String(domainStr[slashIdx...])
+                            } else {
+                                path = "/api/v1/data"
+                            }
+                        } else {
+                            path = "/api/v1/data"
+                        }
+                        if let shim = MT3CallShim(
+                            host: proxyServer.host,
+                            port: UInt16(exactly: proxyServer.port) ?? 443,
+                            path: path,
+                            secretHex: secretHex
+                        ) {
+                            strongSelf.t3CallShim = shim
+                            voipProxyServer = VoipProxyServerWebrtc(
+                                host: "127.0.0.1",
+                                port: Int32(shim.localPort),
+                                username: shim.shimUsername,
+                                password: shim.shimPassword
+                            )
+                            enableTCP = true
+                        }
                     }
                 }
                 
@@ -1233,10 +1265,12 @@ public final class OngoingCallContext {
     
     deinit {
         let contextRef = self.contextRef
+        let t3Shim = self.t3CallShim
         self.queue.async {
             contextRef?.release()
+            t3Shim?.close()
         }
-        
+
         self.audioSessionDisposable.dispose()
         self.audioSessionActiveDisposable.dispose()
         self.networkTypeDisposable?.dispose()
