@@ -77,14 +77,14 @@ http_file(
 # (fat arm64+x86_64). See third-party/libteleproto3/BUILD.
 http_file(
     name = "libteleproto3_ios_device",
-    urls = ["https://github.com/ankuper/teleproto3/releases/download/lib-v0.8.2/libteleproto3-ios-arm64.tar.gz"],
-    sha256 = "bfd05cc613f458f2db961c36df1b73b60ec54dc9dfe6d7f847ab005ad6f00da8",
+    urls = ["https://github.com/ankuper/teleproto3/releases/download/lib-v0.8.3/libteleproto3-ios-arm64.tar.gz"],
+    sha256 = "93d27d0fcd5fc9763f7e217262c65860d223d2aca5ddbe324e4c08f4ad826a3f",
 )
 
 http_file(
     name = "libteleproto3_ios_simulator",
-    urls = ["https://github.com/ankuper/teleproto3/releases/download/lib-v0.8.2/libteleproto3-ios-simulator.tar.gz"],
-    sha256 = "c615d7193899b30b6e34bdb03432a7fceac722153896af1cc580af125f9ea4a0",
+    urls = ["https://github.com/ankuper/teleproto3/releases/download/lib-v0.8.3/libteleproto3-ios-simulator.tar.gz"],
+    sha256 = "a1c77369bf11de58ae7d74c688120561882460dd5cb23de733588c6d6f94d39e",
 )
 
 provisioning_profile_repository = use_extension("@build_bazel_rules_apple//apple:apple.bzl", "provisioning_profile_repository_extension")
