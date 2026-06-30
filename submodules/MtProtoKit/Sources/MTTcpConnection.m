@@ -1265,11 +1265,13 @@ struct ctr_state {
     _t3ReadSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)fd, 0, queue);
     dispatch_source_set_event_handler(_t3ReadSource, ^{
         __strong MTTcpConnection *strongSelf = weakSelf;
+        if (MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 read event]", (intptr_t)strongSelf);
         [strongSelf t3Pump];
     });
     _t3WriteSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, (uintptr_t)fd, 0, queue);
     dispatch_source_set_event_handler(_t3WriteSource, ^{
         __strong MTTcpConnection *strongSelf = weakSelf;
+        if (MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 write event]", (intptr_t)strongSelf);
         [strongSelf t3Pump];
     });
     dispatch_resume(_t3ReadSource);
@@ -1291,9 +1293,13 @@ struct ctr_state {
         return;
     }
 
+    t3_client_state_t stateBefore = t3_client_get_state(_t3Stream);
     t3_client_pump(_t3Stream);
-
     t3_client_state_t state = t3_client_get_state(_t3Stream);
+
+    if (MTLogEnabled() && stateBefore != state) {
+        MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 state %d->%d]", (intptr_t)self, (int)stateBefore, (int)state);
+    }
 
     // TCP connect detected: suspend write source to avoid busy-looping
     // (DISPATCH_SOURCE_TYPE_WRITE fires continuously while socket is writable;
