@@ -1273,12 +1273,15 @@ struct ctr_state {
         [strongSelf t3Pump];
     });
     dispatch_resume(_t3ReadSource);
-    // Write source stays suspended until we actually have data to send.
-    // lib drives SSL_write itself inside pump (on READ events); if we keep
-    // write source resumed, it fires continuously while fd is writable, busy-
-    // looping the pump and leaking allocations until OOM. Resume on demand
-    // from sendType3DataIfNeeded when t3_client_write returns BUF_TOO_SMALL.
-    _t3WriteSuspended = true;
+    // Write source is activated initially so GCD notifies us when the
+    // non-blocking TCP connect completes (kqueue EVFILT_WRITE fires once on
+    // connect completion). After t3_client_pump advances past CONNECTING, the
+    // write source is suspended in t3Pump to avoid a busy-loop (the socket
+    // stays writable during TLS). TLS + HTTP handshake are driven by READ
+    // events; the send buffer is never full for small handshake messages so
+    // SSL_ERROR_WANT_WRITE does not occur in practice.
+    dispatch_resume(_t3WriteSource);
+    _t3WriteSuspended = false;
 
     [self t3Pump];
 }
@@ -1291,6 +1294,17 @@ struct ctr_state {
     t3_client_pump(_t3Stream);
 
     t3_client_state_t state = t3_client_get_state(_t3Stream);
+
+    // TCP connect detected: suspend write source to avoid busy-looping
+    // (DISPATCH_SOURCE_TYPE_WRITE fires continuously while socket is writable;
+    // after TCP connects the socket stays writable throughout TLS handshake).
+    // TLS and HTTP handshake are driven by the read source from this point.
+    if (!_t3WriteSuspended && !_t3Ready && state != T3_CLIENT_STATE_CONNECTING
+        && _t3WriteSource != nil) {
+        dispatch_suspend(_t3WriteSource);
+        _t3WriteSuspended = true;
+    }
+
     if (state == T3_CLIENT_STATE_ERROR || state == T3_CLIENT_STATE_CLOSED) {
         if (MTLogEnabled()) {
             MTLog(@"[MTTcpConnection#%" PRIxPTR " Type3 transport closed/error: %s]", (intptr_t)self, t3_client_last_error(_t3Stream));
