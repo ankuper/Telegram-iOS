@@ -1203,6 +1203,17 @@ struct ctr_state {
     }];
 }
 
+// Type3 wire-level tracing (per-GCD-event and per-packet hex dumps). OFF in
+// shipped builds: these fire on every read/write source event and every packet.
+// Under call-rate packet volume they flood MTLog from org.mtproto.tcpQueue,
+// which burns CPU (cpu_resource), thrashes the log file (diskwrites_resource),
+// and ultimately aborts inside the Swift logging bridge (SIGABRT in
+// Logger.log). Enable only for local transport bring-up. Low-frequency logs
+// (state transitions, errors, connect) stay on the normal MTLogEnabled() gate.
+#ifndef T3_VERBOSE_WIRE_LOG
+#define T3_VERBOSE_WIRE_LOG 0
+#endif
+
 - (void)startType3 {
     if (_closed || _t3Stream != NULL) {
         return;
@@ -1265,13 +1276,13 @@ struct ctr_state {
     _t3ReadSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, (uintptr_t)fd, 0, queue);
     dispatch_source_set_event_handler(_t3ReadSource, ^{
         __strong MTTcpConnection *strongSelf = weakSelf;
-        if (MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 read event]", (intptr_t)strongSelf);
+        if (T3_VERBOSE_WIRE_LOG && MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 read event]", (intptr_t)strongSelf);
         [strongSelf t3Pump];
     });
     _t3WriteSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_WRITE, (uintptr_t)fd, 0, queue);
     dispatch_source_set_event_handler(_t3WriteSource, ^{
         __strong MTTcpConnection *strongSelf = weakSelf;
-        if (MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 write event]", (intptr_t)strongSelf);
+        if (T3_VERBOSE_WIRE_LOG && MTLogEnabled()) MTLog(@"[MTTcpConnection#%" PRIxPTR " t3 write event]", (intptr_t)strongSelf);
         [strongSelf t3Pump];
     });
     dispatch_resume(_t3ReadSource);
@@ -1356,7 +1367,7 @@ struct ctr_state {
             return;
         }
         NSData *packetData = [[NSData alloc] initWithBytes:buffer.mutableBytes length:outLength];
-        if (MTLogEnabled()) {
+        if (T3_VERBOSE_WIRE_LOG && MTLogEnabled()) {
             NSUInteger dumpLen = MIN((NSUInteger)64, packetData.length);
             NSMutableString *hexDump = [NSMutableString stringWithCapacity:dumpLen * 3];
             const uint8_t *bytes = packetData.bytes;
@@ -1422,7 +1433,7 @@ struct ctr_state {
         bool failed = false;
         while (_t3SendOffset < dataToSend.dataSet.count) {
             NSData *data = dataToSend.dataSet[_t3SendOffset];
-            if (MTLogEnabled()) {
+            if (T3_VERBOSE_WIRE_LOG && MTLogEnabled()) {
                 NSUInteger dumpLen = MIN((NSUInteger)64, data.length);
                 NSMutableString *hexDump = [NSMutableString stringWithCapacity:dumpLen * 3];
                 const uint8_t *bytes = data.bytes;
